@@ -1,0 +1,302 @@
+#include <iostream>
+#include <Windows.h>
+#include <ctime>
+#include <queue>
+
+void ClrScr() {
+	printf("\033[2J"); // Czyści ekran
+	printf("\033[0;0f"); // Ustawia kursor w lewym, górnym rogu
+}
+
+struct Coordinate {
+	int x, y;
+	Coordinate(int x, int y) {
+		this->x = x;
+		this->y = y;
+	}
+};
+
+class Board{
+	int width;
+	int height;
+	int** field;
+
+public:
+	Board(int width, int height) {
+		this->width = width + 2;//dodatkowe miejsce na sciany
+		this->height = height + 2;
+		create_field();
+	}
+
+	int get_board_width() {
+		return width;
+	}
+
+	int get_board_height() {
+		return height;
+	}
+
+	void create_field() {
+		field = new int* [height];
+		for (int i = 0; i < height; i++) {
+			field[i] = new int[width];
+		}
+		fill_field_with_0();
+		create_walls();
+	}
+	
+	void fill_field_with_0() {
+		for (int i = 0; i < height; i++) {
+			for (int j = 0; j < width; j++) {
+				field[i][j] = 0;
+			}
+		}
+	}
+
+	void create_walls() {
+		for (int i = 0; i < height; i++) {
+			field[i][0] = 4;
+			field[i][width-1] = 4;
+		}
+
+		for (int i = 0; i < width; i++) {
+			field[0][i] = 4;
+			field[height-1][i] = 4;
+		}
+	}
+
+	void print_field() {
+		for (int i = 0; i < height; i++) {
+			for (int j = 0; j < width; j++) {
+				switch (field[i][j]) {
+				case 0:
+					//system("COLOR 0F");
+					printf("  ");
+					break;
+				case 1:
+					//system("COLOR 0D");
+					printf("@ ");
+					break;
+				case 2:
+					//system("COLOR 0D");
+					printf("o ");
+					break;
+				case 3:
+					//system("COLOR 04");
+					printf("X ");
+					break;
+				case 4:
+					//system("COLOR 0F");
+					printf("%c",char(177));
+					printf("%c", char(177));
+					break;
+				default:
+					break;
+				}
+			}
+			printf("\n");
+		}
+	}
+
+	void change_field(int x, int y, int value) {
+		field[y][x] = value;
+	}
+
+	int get_field_value(int x, int y) {
+		if (x<0 || x>width - 1 || y<0 || y>height - 1) {
+			return -1;
+		}
+		return field[y][x];
+	}
+
+	~Board() {
+		for (int i = 0; i < height; i++) {
+			delete[] field[i];
+		}
+		delete[] field;
+	}
+};
+
+class Fruit {
+	int boardWidth;
+	int boardHeight;
+	int posX;
+	int posY;
+
+public:
+	Fruit(int width, int height, Board& board) {
+		boardWidth = width;
+		boardHeight = height;
+		reset_cords_of_fruit(board);
+	}
+
+	void reset_cords_of_fruit(Board& board) {
+		do {
+			posX = rand() % boardWidth + 1;
+			posY = rand() % boardHeight + 1;
+		} while (board.get_field_value(posX, posY) != 0);
+		board.change_field(posX, posY, 3);
+	}
+
+	int get_fruitX() {
+		return posX;
+	}
+
+	int get_fruitY() {
+		return posY;
+	}
+};
+
+class Snake{
+	int boardWidth;
+	int boardHeight;
+	int _bodySize;
+	int posX;
+	int posY;
+	bool gameOver = false;
+	std::queue<Coordinate>snakeBody;
+	enum Direction { UP, DOWN, LEFT, RIGHT };
+	Direction dir=RIGHT;
+
+public:
+	Snake(int width, int height, int _bodySize, Board& board) {
+		boardWidth = width;
+		boardHeight = height;
+		this->_bodySize = _bodySize;
+		snake_setup();
+	}
+
+	void snake_setup() {
+		posX = rand() % boardWidth/2 + 1;
+		posY = rand() % boardHeight/2 + 1;
+	}
+
+	void get_input() {
+		if (GetAsyncKeyState(VK_UP) && dir != DOWN)
+			dir = UP;
+		else if (GetAsyncKeyState(VK_DOWN) && dir != UP)
+			dir = DOWN;
+		else if (GetAsyncKeyState(VK_LEFT) && dir != RIGHT)
+			dir = LEFT;
+		else if (GetAsyncKeyState(VK_RIGHT) && dir != LEFT)
+			dir = RIGHT;
+	}
+
+	void move(Board& board) {
+		switch (dir) {
+		case UP:
+			posY--;
+			break;
+		case DOWN:
+			posY++;
+			break;
+		case LEFT:
+			posX--;
+			break;
+		case RIGHT:
+			posX++;
+			break;
+		default:
+			break;
+		}
+
+		if (isDead(board)) {
+			gameOver = true;
+		}
+		//jak walnie w siebie lub sciane to koniec
+
+		if (_bodySize > 1)
+			board.change_field(snakeBody.back().x, snakeBody.back().y, 2);
+
+		put_snake_on_board(board);
+		Coordinate tail(posX, posY);
+		snakeBody.push(tail);
+		
+	}
+
+	void delete_tail(Board& board) {//jesli nie zjadl owoca
+		if (snakeBody.size() >= _bodySize) {
+			board.change_field(snakeBody.front().x, snakeBody.front().y, 0);
+			snakeBody.pop();
+		}
+	}
+
+	void put_snake_on_board(Board& board) {
+		board.change_field(posX, posY, 1);
+	}
+
+	bool isFruitFound(Fruit& fruit, Board& board) {
+		if (posX == fruit.get_fruitX() && posY == fruit.get_fruitY()) {
+			fruit.reset_cords_of_fruit(board);
+			return true;
+		}
+		return false;
+	}
+
+	bool isDead(Board& board) {
+		if (board.get_field_value(posX, posY) == 4 || board.get_field_value(posX, posY) == 2 || board.get_field_value(posX, posY) == -1) {
+			ClrScr();
+			printf("PRZEGRANA\n");
+			return true;
+		}
+		return false;
+	}
+
+	bool _gameOver() {
+		return gameOver;
+	}
+
+	void eatFruit() {
+		_bodySize++;
+	}
+};
+
+class GameControll {
+	int width, height;
+public:
+	GameControll(int width, int height) {
+		this->width = width;
+		this->height = height;
+	}
+
+	void start_game(int delay) {
+		Board board(width, height);
+		Snake player(width, height, 1, board);
+		Fruit fruit(width, height, board);
+		logic(board, player, fruit ,delay);
+	}
+
+	void logic(Board& board, Snake& player,Fruit& fruit, int delay) {
+		
+		while (!player._gameOver()) {
+			//ClearScreen();
+			ClrScr();
+			player.get_input();
+			player.move(board);
+			board.print_field();
+			if (player.isFruitFound(fruit, board)) {
+				player.eatFruit();
+			}
+			player.delete_tail(board);
+			Sleep(delay);
+		}
+	}
+};
+
+void runGame() {
+	int width=30; 
+	int height=30; 
+	int delay=100;
+
+	GameControll game(width, height);
+	game.start_game(delay);
+}
+
+int main() {
+	std::ios::sync_with_stdio(0);
+	srand(time(0));
+
+	runGame();
+
+	return 0;
+}
